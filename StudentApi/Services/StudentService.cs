@@ -6,10 +6,13 @@ namespace StudentApi.Services
 	public class StudentService : IStudentService
 	{
 		private readonly IStudentRepository _repo;
-		public StudentService(IStudentRepository repo)
+		private readonly ILogger<StudentService> _logger;
+		public StudentService(IStudentRepository repo, ILogger<StudentService> logger)
 		{
-			_repo = repo; 
+			_repo = repo;
+			_logger = logger;
 		}
+
 		public Task<Student> CreateStudent(Student student)
 		{
 			return _repo.AddAsync(student);
@@ -23,6 +26,7 @@ namespace StudentApi.Services
 				return false;
 
 			await _repo.DeleteAsync(id);
+			_logger.LogInformation($"Deleted student with email: {student.Email}");
 			return true;
 		}
 
@@ -47,10 +51,10 @@ namespace StudentApi.Services
 			if (String.IsNullOrWhiteSpace(dto.Name)) // validate Name
 				return Task.FromResult(false);
 
-			if (dto.Age <= 0)	// Validate Age
+			if (dto.Age <= 0)   // Validate Age
 				return Task.FromResult(false);
 
-			if (!dto.Email.Contains("@"))	// Validate Email
+			if (!dto.Email.Contains("@"))   // Validate Email
 				return Task.FromResult(false);
 
 			return Task.FromResult(true);
