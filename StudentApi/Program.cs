@@ -48,7 +48,7 @@ app.MapGet("/students", async (IStudentService service, CancellationToken cancel
 app.MapGet("/students/{id:int}", async (int id, IStudentService service, CancellationToken cancellationToken) =>
 {
 	var student = await service.GetStudent(id, cancellationToken);
-	var result = student!.ToDto();
+	var result = student?.ToDto();
 	return result is null ? Results.NotFound() : Results.Ok(result);
 });
 
