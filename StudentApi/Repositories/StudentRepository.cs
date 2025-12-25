@@ -11,37 +11,37 @@ namespace StudentApi.Repositories
 		{
 			_context = context;
 		}
-		public async Task<Student> AddAsync(Student student)
+		public async Task<Student> AddAsync(Student student, CancellationToken cancellationToken)
 		{
 			_context.Students.Add(student);
-			await _context.SaveChangesAsync();
+			await _context.SaveChangesAsync(cancellationToken);
 			return student;
 		}
 
-		public async Task DeleteAsync(int id)
+		public async Task DeleteAsync(int id, CancellationToken cancellationToken)
 		{
 			var student = await _context.Students.FindAsync(id);
 			if (student is null)
 				return;
 
 			_context.Students.Remove(student);
-			await _context.SaveChangesAsync();
+			await _context.SaveChangesAsync(cancellationToken);
 		}
 
-		public async Task<IEnumerable<Student>> GetAllAsync()
+		public async Task<IEnumerable<Student>> GetAllAsync(CancellationToken cancellationToken)
 		{
-			return await _context.Students.ToListAsync();
+			return await _context.Students.ToListAsync(cancellationToken);
 		}
 
-		public async Task<Student?> GetByIdAsync(int id)
+		public async Task<Student?> GetByIdAsync(int id, CancellationToken cancellationToken)
 		{
-			return await _context.Students.FindAsync(id);
+			return await _context.Students.FirstOrDefaultAsync(s => s.Id == id, cancellationToken);
 		}
 
-		public async Task UpdateAsync(Student student)
+		public async Task UpdateAsync(Student student, CancellationToken cancellationToken)
 		{
 			_context.Students.Update(student);
-			await _context.SaveChangesAsync();
+			await _context.SaveChangesAsync(cancellationToken);
 		}
 	}
 }

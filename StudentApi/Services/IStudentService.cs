@@ -3,11 +3,11 @@ namespace StudentApi.Services
 {
 	public interface IStudentService
 	{
-		Task<IEnumerable<Student>> GetStudents();
-		Task<Student?> GetStudent(int id);
-		Task<Student> CreateStudent(Student student);
-		Task<bool> DeleteStudent(int id);
-		Task<Student?> UpdateStudent(Student student);
+		Task<IEnumerable<Student>> GetStudents(CancellationToken cancellation);
+		Task<Student?> GetStudent(int id, CancellationToken cancellationToken);
+		Task<Student> CreateStudent(Student student, CancellationToken cancellationToken);
+		Task<bool> DeleteStudent(int id, CancellationToken cancellationToken);
+		Task<Student?> UpdateStudent(Student student, CancellationToken cancellationToken);
 		Task<bool> ValidateAsync(StudentApi.Dtos.CreateUpdateStudentDto Dto);
 	}
 }

@@ -13,36 +13,36 @@ namespace StudentApi.Services
 			_logger = logger;
 		}
 
-		public Task<Student> CreateStudent(Student student)
+		public Task<Student> CreateStudent(Student student, CancellationToken cancellationToken)
 		{
-			return _repo.AddAsync(student);
+			return _repo.AddAsync(student, cancellationToken);
 		}
 
-		public async Task<bool> DeleteStudent(int id)
+		public async Task<bool> DeleteStudent(int id, CancellationToken cancellationToken)
 		{
-			var student = await _repo.GetByIdAsync(id);
+			var student = await _repo.GetByIdAsync(id, cancellationToken);
 
 			if (student is null)
 				return false;
 
-			await _repo.DeleteAsync(id);
+			await _repo.DeleteAsync(id, cancellationToken);
 			_logger.LogInformation($"Deleted student with email: {student.Email}");
 			return true;
 		}
 
-		public Task<Student?> GetStudent(int id)
+		public Task<Student?> GetStudent(int id, CancellationToken cancellationToken)
 		{
-			return _repo.GetByIdAsync(id);
+			return _repo.GetByIdAsync(id, cancellationToken);
 		}
 
-		public Task<IEnumerable<Student>> GetStudents()
+		public Task<IEnumerable<Student>> GetStudents(CancellationToken cancellationToken)
 		{
-			return _repo.GetAllAsync();
+			return _repo.GetAllAsync(cancellationToken);
 		}
 
-		public async Task<Student?> UpdateStudent(Student student)
+		public async Task<Student?> UpdateStudent(Student student, CancellationToken cancellationToken)
 		{
-			await _repo.UpdateAsync(student);
+			await _repo.UpdateAsync(student, cancellationToken);
 			return student;
 		}
 
