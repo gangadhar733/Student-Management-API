@@ -1,11 +1,16 @@
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
+using Microsoft.OpenApi;
 using StudentApi.Data;
-using StudentApi.Repositories;
-using StudentApi.Services;
-using StudentApi.Models;
 using StudentApi.Dtos;
 using StudentApi.Mapping;
 using StudentApi.Middleware;
+using StudentApi.Repositories;
+using StudentApi.Services;
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
+using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -19,7 +24,51 @@ builder.Services.AddScoped<IStudentService, StudentService>();
 
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
+builder.Services.AddSwaggerGen(options =>
+{
+	options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
+	{
+		In = ParameterLocation.Header,
+		Description = "Enter JWT token with Bearer prefix. Example: Bearer YOUR_TOKEN_HERE",
+		Name = "Authorization",
+		Type = SecuritySchemeType.Http,
+		Scheme = "Bearer",
+		BearerFormat = "JWT"
+	});
+
+	options.AddSecurityRequirement(document => new OpenApiSecurityRequirement
+	{
+		{
+			new OpenApiSecuritySchemeReference("Bearer", document),
+			new List<string>()
+		}
+	});
+});
+
+
+var jwt = builder.Configuration.GetSection("Jwt");
+var key = Encoding.UTF8.GetBytes(jwt["Key"]);
+
+builder.Services.AddAuthentication(options =>
+{
+	options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+	options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+}).AddJwtBearer(options =>
+{
+	options.TokenValidationParameters = new TokenValidationParameters
+	{
+		ValidateIssuer = true,
+		ValidateAudience = true,
+		ValidateIssuerSigningKey = true,
+		ValidateLifetime = true,
+
+		ValidIssuer = jwt["Issuer"],
+		ValidAudience = jwt["Audience"],
+		IssuerSigningKey = new SymmetricSecurityKey(key)
+	};
+});
+
+builder.Services.AddAuthorization();
 
 var app = builder.Build();
 
@@ -36,6 +85,9 @@ if (app.Environment.IsDevelopment())
 	});
 }
 
+app.UseAuthentication();
+app.UseAuthorization();
+
 app.UseHttpsRedirection();
 
 app.MapGet("/students", async (IStudentService service, CancellationToken cancellationToken) =>
@@ -43,7 +95,7 @@ app.MapGet("/students", async (IStudentService service, CancellationToken cancel
 	var students = await service.GetStudents(cancellationToken);
 	var result = students.Select(StudentMapping.ToDto); // Map the enity to Dto before returning the result
 	return Results.Ok(result);
-});
+}).RequireAuthorization();
 
 app.MapGet("/students/{id:int}", async (int id, IStudentService service, CancellationToken cancellationToken) =>
 {
@@ -65,7 +117,7 @@ app.MapPost("/students", async (CreateUpdateStudentDto studentDto,
 	var created = await service.CreateStudent(student, cancellationToken);
 
 	return Results.Created($"/students/{created.Id}", created.ToDto());
-});
+}).RequireAuthorization(policy => policy.RequireRole("Admin"));
 
 app.MapDelete("/students/{id:int}", async (int id, IStudentService service, CancellationToken cancellationToken) =>
 {
@@ -94,6 +146,33 @@ app.MapPut("/students/{id:int}", async (int id, CreateUpdateStudentDto studentDt
 	await service.UpdateStudent(existing, cancellationToken);
 
 	return Results.Ok(existing.ToDto());
+});
+
+app.MapPost("/login", (string username, string password) =>
+{
+	if (username != "administrator" || password != "administrator")
+		return Results.Unauthorized();
+
+	var jwt = app.Configuration.GetSection("Jwt");
+	var key = Encoding.UTF8.GetBytes(jwt["Key"]);
+
+	var claims = new[]
+	{
+		new Claim(ClaimTypes.Name, username),
+		new Claim(ClaimTypes.Role, "Admin")
+	};
+
+	var token = new JwtSecurityToken(
+		issuer: jwt["Issuer"],
+		audience: jwt["audience"],
+		claims: claims,
+		expires: DateTime.UtcNow.AddMinutes(Convert.ToInt32(jwt["ExpiresInMinutes"])),
+		signingCredentials: new SigningCredentials(new SymmetricSecurityKey(key), SecurityAlgorithms.HmacSha256)
+		);
+
+	var tokenString = new JwtSecurityTokenHandler().WriteToken(token);
+
+	return Results.Ok(new {token =  tokenString});
 });
 
 app.Run();
