@@ -47,7 +47,12 @@ builder.Services.AddSwaggerGen(options =>
 
 
 var jwt = builder.Configuration.GetSection("Jwt");
-var key = Encoding.UTF8.GetBytes(jwt["Key"]);
+var secretKey = Environment.GetEnvironmentVariable("JWT_SECRET_STUDENTAPI")
+								?? jwt["Key"]
+								?? throw new Exception("JWT secret key not configured");
+										
+
+var key = Encoding.UTF8.GetBytes(secretKey);
 
 builder.Services.AddAuthentication(options =>
 {
@@ -102,7 +107,7 @@ app.MapGet("/students/{id:int}", async (int id, IStudentService service, Cancell
 	var student = await service.GetStudent(id, cancellationToken);
 	var result = student?.ToDto();
 	return result is null ? Results.NotFound() : Results.Ok(result);
-});
+}).RequireAuthorization();
 
 app.MapPost("/students", async (CreateUpdateStudentDto studentDto,
 								IStudentService service,
@@ -124,7 +129,7 @@ app.MapDelete("/students/{id:int}", async (int id, IStudentService service, Canc
 	var deleted = await service.DeleteStudent(id, cancellationToken);
 
 	return deleted ? Results.Ok() : Results.NotFound();
-});
+}).RequireAuthorization(policy => policy.RequireRole("Admin"));
 
 app.MapPut("/students/{id:int}", async (int id, CreateUpdateStudentDto studentDto,
 												IStudentService service,
@@ -146,12 +151,19 @@ app.MapPut("/students/{id:int}", async (int id, CreateUpdateStudentDto studentDt
 	await service.UpdateStudent(existing, cancellationToken);
 
 	return Results.Ok(existing.ToDto());
-});
+}).RequireAuthorization(policy => policy.RequireRole("Admin"));
 
 app.MapPost("/login", (string username, string password) =>
 {
 	if (username != "administrator" || password != "administrator")
-		return Results.Unauthorized();
+	{
+		if (username != "user" || password != "user")
+		{
+			return Results.Unauthorized();
+		}
+	}
+
+	string role = (username == "administrator") ? "Admin" : "User";
 
 	var jwt = app.Configuration.GetSection("Jwt");
 	var key = Encoding.UTF8.GetBytes(jwt["Key"]);
@@ -159,20 +171,25 @@ app.MapPost("/login", (string username, string password) =>
 	var claims = new[]
 	{
 		new Claim(ClaimTypes.Name, username),
-		new Claim(ClaimTypes.Role, "Admin")
+		new Claim(ClaimTypes.Role, role)
 	};
 
 	var token = new JwtSecurityToken(
 		issuer: jwt["Issuer"],
-		audience: jwt["audience"],
+		audience: jwt["Audience"],
 		claims: claims,
 		expires: DateTime.UtcNow.AddMinutes(Convert.ToInt32(jwt["ExpiresInMinutes"])),
-		signingCredentials: new SigningCredentials(new SymmetricSecurityKey(key), SecurityAlgorithms.HmacSha256)
+		signingCredentials: new SigningCredentials(
+					new SymmetricSecurityKey(key), SecurityAlgorithms.HmacSha256)
 		);
 
 	var tokenString = new JwtSecurityTokenHandler().WriteToken(token);
 
-	return Results.Ok(new {token =  tokenString});
+	return Results.Ok(new
+	{
+		token = tokenString,
+		role = role
+	});
 });
 
 app.Run();
