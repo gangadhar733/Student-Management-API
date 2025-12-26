@@ -1,11 +1,14 @@
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi;
+using StudentApi.Auth;
 using StudentApi.Data;
 using StudentApi.Dtos;
 using StudentApi.Mapping;
 using StudentApi.Middleware;
+using StudentApi.Models;
 using StudentApi.Repositories;
 using StudentApi.Services;
 using System.IdentityModel.Tokens.Jwt;
@@ -153,25 +156,35 @@ app.MapPut("/students/{id:int}", async (int id, CreateUpdateStudentDto studentDt
 	return Results.Ok(existing.ToDto());
 }).RequireAuthorization(policy => policy.RequireRole("Admin"));
 
-app.MapPost("/login", (string username, string password) =>
+app.MapPost("/login", async (string username, string password, AppDbContext context) =>
 {
-	if (username != "administrator" || password != "administrator")
-	{
-		if (username != "user" || password != "user")
-		{
-			return Results.Unauthorized();
-		}
-	}
+	var user = await context.Users.FirstOrDefaultAsync(u => u.Username == username);//InMemoryUsers.Users.FirstOrDefault(u => u.Username == username);
+	if (user is null)
+		return Results.Unauthorized();
 
-	string role = (username == "administrator") ? "Admin" : "User";
+	var hasher = new PasswordHasher<User>();
+	var result = hasher.VerifyHashedPassword(user, user.PasswordHash, password);
+
+	if (result == PasswordVerificationResult.Failed)
+		return Results.Unauthorized();
+	//if (username != "administrator" || password != "administrator")
+	//{
+	//	if (username != "user" || password != "user")
+	//	{
+	//		return Results.Unauthorized();
+	//	}
+	//}
 
 	var jwt = app.Configuration.GetSection("Jwt");
-	var key = Encoding.UTF8.GetBytes(jwt["Key"]);
+	var secretKey = Environment.GetEnvironmentVariable("JWT_SECRET_STUDENTAPI")
+								?? jwt["Key"]
+								?? throw new Exception("JWT secret key not configured");
+	var key = Encoding.UTF8.GetBytes(secretKey);
 
 	var claims = new[]
 	{
 		new Claim(ClaimTypes.Name, username),
-		new Claim(ClaimTypes.Role, role)
+		new Claim(ClaimTypes.Role, user.Role)
 	};
 
 	var token = new JwtSecurityToken(
@@ -188,8 +201,32 @@ app.MapPost("/login", (string username, string password) =>
 	return Results.Ok(new
 	{
 		token = tokenString,
-		role = role
+		role = user.Role,
+		status = "Login Success"
 	});
+});
+
+app.MapPost("/register", async (string username, string password, AppDbContext context) =>
+{
+	if (await context.Users.AnyAsync(u => u.Username == username))
+		return Results.BadRequest("User already exists");
+
+	var hasher = new PasswordHasher<User>();
+	var user = new User
+	{
+		Username = username,
+	};
+	user.Role = (username == "administrator") ? "Admin" : "User";
+	user.PasswordHash = hasher.HashPassword(user, password);
+
+	//TODO: 
+	//service.RegisterUser(user);
+	context.Users.Add(user);
+	await context.SaveChangesAsync();
+
+	//InMemoryUsers.Users.Add(user);
+
+	return Results.Ok("User registered successfully");
 });
 
 app.Run();
