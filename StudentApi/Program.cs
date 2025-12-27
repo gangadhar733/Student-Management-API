@@ -13,6 +13,7 @@ using StudentApi.Services;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
+using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -80,6 +81,31 @@ builder.Services.AddAuthentication(options =>
 
 builder.Services.AddAuthorization();
 
+builder.Services.AddRateLimiter(options =>
+{
+	// Global rule: 100 requests per minute per IP
+	options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
+		RateLimitPartition.GetFixedWindowLimiter(
+			partitionKey: context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+			factory: _ => new FixedWindowRateLimiterOptions
+			{
+				PermitLimit = 100,
+				Window = TimeSpan.FromMinutes(1),
+				QueueLimit = 0,
+				QueueProcessingOrder = QueueProcessingOrder.OldestFirst
+			}));
+
+	// Named rule for login (stricter)
+	options.AddPolicy("LoginPolicy", context =>
+		RateLimitPartition.GetFixedWindowLimiter(
+			partitionKey: context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+			factory: _ => new FixedWindowRateLimiterOptions
+			{
+				PermitLimit = 5,
+				Window = TimeSpan.FromMinutes(1)
+			}));
+});
+
 var app = builder.Build();
 
 app.UseMiddleware<ExceptionHandlingMiddleware>();
@@ -94,7 +120,7 @@ if (app.Environment.IsDevelopment())
 		options.DocumentTitle = "My API Explorer"; // Optional title customization
 	});
 }
-
+app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
 
@@ -200,7 +226,7 @@ app.MapPost("/login", async (IUserService userService, string username, string p
 		role = user.Role,
 		status = "Login Success"
 	});
-});
+}).RequireRateLimiting("LoginPolicy");
 
 app.MapPost("/register", async (IUserService userService, string username, string password, CancellationToken cancellationToken) =>
 {
