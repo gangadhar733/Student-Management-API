@@ -3,7 +3,6 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi;
-using StudentApi.Auth;
 using StudentApi.Data;
 using StudentApi.Dtos;
 using StudentApi.Mapping;
@@ -24,6 +23,9 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 
 builder.Services.AddScoped<IStudentRepository, StudentRepository>();
 builder.Services.AddScoped<IStudentService, StudentService>();
+
+builder.Services.AddScoped<IUserRepository, UserRepository>();
+builder.Services.AddScoped<IUserService, UserService>();
 
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddEndpointsApiExplorer();
@@ -53,7 +55,7 @@ var jwt = builder.Configuration.GetSection("Jwt");
 var secretKey = Environment.GetEnvironmentVariable("JWT_SECRET_STUDENTAPI")
 								?? jwt["Key"]
 								?? throw new Exception("JWT secret key not configured");
-										
+
 
 var key = Encoding.UTF8.GetBytes(secretKey);
 
@@ -156,9 +158,10 @@ app.MapPut("/students/{id:int}", async (int id, CreateUpdateStudentDto studentDt
 	return Results.Ok(existing.ToDto());
 }).RequireAuthorization(policy => policy.RequireRole("Admin"));
 
-app.MapPost("/login", async (string username, string password, AppDbContext context) =>
+app.MapPost("/login", async (IUserService userService, string username, string password, CancellationToken cancellationToken) =>
 {
-	var user = await context.Users.FirstOrDefaultAsync(u => u.Username == username);//InMemoryUsers.Users.FirstOrDefault(u => u.Username == username);
+	var user = await userService.GetUserByUsername(username, cancellationToken);
+
 	if (user is null)
 		return Results.Unauthorized();
 
@@ -167,13 +170,6 @@ app.MapPost("/login", async (string username, string password, AppDbContext cont
 
 	if (result == PasswordVerificationResult.Failed)
 		return Results.Unauthorized();
-	//if (username != "administrator" || password != "administrator")
-	//{
-	//	if (username != "user" || password != "user")
-	//	{
-	//		return Results.Unauthorized();
-	//	}
-	//}
 
 	var jwt = app.Configuration.GetSection("Jwt");
 	var secretKey = Environment.GetEnvironmentVariable("JWT_SECRET_STUDENTAPI")
@@ -206,9 +202,9 @@ app.MapPost("/login", async (string username, string password, AppDbContext cont
 	});
 });
 
-app.MapPost("/register", async (string username, string password, AppDbContext context) =>
+app.MapPost("/register", async (IUserService userService, string username, string password, CancellationToken cancellationToken) =>
 {
-	if (await context.Users.AnyAsync(u => u.Username == username))
+	if (await userService.IsExistingUser(username, cancellationToken))
 		return Results.BadRequest("User already exists");
 
 	var hasher = new PasswordHasher<User>();
@@ -219,12 +215,7 @@ app.MapPost("/register", async (string username, string password, AppDbContext c
 	user.Role = (username == "administrator") ? "Admin" : "User";
 	user.PasswordHash = hasher.HashPassword(user, password);
 
-	//TODO: 
-	//service.RegisterUser(user);
-	context.Users.Add(user);
-	await context.SaveChangesAsync();
-
-	//InMemoryUsers.Users.Add(user);
+	await userService.CreateUser(user, cancellationToken);
 
 	return Results.Ok("User registered successfully");
 });
