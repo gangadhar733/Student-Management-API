@@ -120,11 +120,17 @@ if (app.Environment.IsDevelopment())
 		options.DocumentTitle = "My API Explorer"; // Optional title customization
 	});
 }
+app.UseSwagger();
+app.UseSwaggerUI(options =>
+{
+	options.SwaggerEndpoint("/swagger/v1/swagger.json", "API v1");
+	options.DocumentTitle = "My API Explorer"; // Optional title customization
+});
 app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
 
-app.UseHttpsRedirection();
+//app.UseHttpsRedirection();
 
 app.MapGet("/students", async (IStudentService service, CancellationToken cancellationToken) =>
 {

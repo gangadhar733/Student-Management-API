@@ -1,0 +1,32 @@
+﻿services:
+  sqlserver-v1:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: sqlserver-v1
+    environment:
+      SA_PASSWORD: ${SA_PASSWORD}
+      ACCEPT_EULA: "Y"
+    ports:
+      - "1433:1433"
+    networks:
+      - student-net
+    volumes:
+      - sql-data:/var/opt/mssql
+
+  student-api-container-v1:
+    build: .
+    container_name: student-api-container-v1
+    ports:
+      - "8080:8080"
+    environment:
+      ConnectionStrings__DefaultConnection: "${CONNECTION_STRING}"
+      JWT_SECRET_STUDENTAPI: "${JWT_SECRET}"
+    depends_on:
+      - sqlserver-v1
+    networks:
+      - student-net
+
+networks:
+  student-net:
+
+volumes:
+  sql-data:
